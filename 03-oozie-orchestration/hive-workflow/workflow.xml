@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Workflow Oozie : chaîne les trois étapes Hive (table CSV -> table ORC -> chargement) -->
+<workflow-app xmlns="uri:oozie:workflow:0.5" name="${hiveUsername}_nyc_drivers_wf">
+
+  <global>
+    <job-tracker>${jobTracker}</job-tracker>
+    <name-node>${nameNode}</name-node>
+  </global>
+
+  <!-- Authentification Kerberos auprès de HiveServer2 -->
+  <credentials>
+    <credential name="hive2_creds" type="hive2">
+      <property>
+        <name>hive2.jdbc.url</name>
+        <value>${jdbcUrl}</value>
+      </property>
+      <property>
+        <name>hive2.server.principal</name>
+        <value>${hivePrincipal}</value>
+      </property>
+    </credential>
+  </credentials>
+
+  <start to="create_csv_table"/>
+
+  <action name="create_csv_table" cred="hive2_creds">
+    <hive2 xmlns="uri:oozie:hive2-action:0.2">
+      <jdbc-url>${jdbcUrl}</jdbc-url>
+      <script>${wfDir}/scripts/create_drivers_ext.hql</script>
+      <param>group=${hiveDatabase}</param>
+      <param>hiveUsername=${hiveUsername}</param>
+      <param>user=${clusterUsername}</param>
+    </hive2>
+    <ok to="create_orc_table"/>
+    <error to="kill_job"/>
+  </action>
+
+  <action name="create_orc_table" cred="hive2_creds">
+    <hive2 xmlns="uri:oozie:hive2-action:0.2">
+      <jdbc-url>${jdbcUrl}</jdbc-url>
+      <script>${wfDir}/scripts/create_drivers_orc.hql</script>
+      <param>group=${hiveDatabase}</param>
+      <param>hiveUsername=${hiveUsername}</param>
+      <param>user=${clusterUsername}</param>
+    </hive2>
+    <ok to="insert_data"/>
+    <error to="kill_job"/>
+  </action>
+
+  <action name="insert_data" cred="hive2_creds">
+    <hive2 xmlns="uri:oozie:hive2-action:0.2">
+      <jdbc-url>${jdbcUrl}</jdbc-url>
+      <script>${wfDir}/scripts/insert_drivers_orc.hql</script>
+      <param>group=${hiveDatabase}</param>
+      <param>hiveUsername=${hiveUsername}</param>
+    </hive2>
+    <ok to="end"/>
+    <error to="kill_job"/>
+  </action>
+
+  <kill name="kill_job">
+    <message>Échec de l'action [${wf:lastErrorNode()}] : ${wf:errorMessage(wf:lastErrorNode())}</message>
+  </kill>
+
+  <end name="end"/>
+</workflow-app>
